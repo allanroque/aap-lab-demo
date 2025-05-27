@@ -1,0 +1,14 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  group_by: ['alertname']
+  group_wait: 10s
+  group_interval: 15s
+  repeat_interval: 45s
+  receiver: 'webhooks'
+
+receivers:
+  - name: 'webhooks'
+    webhook_configs:
+      - url: 'http://localhost:5050/prometheus'  # ajuste conforme o EDA ou webhook de destino

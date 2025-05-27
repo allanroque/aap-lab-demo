@@ -1,0 +1,32 @@
+---
+ansible-navigator:
+  ansible:
+    config:
+      path: ./ansible.cfg 
+    inventory:
+      entries:
+      - ./inventory
+  execution-environment:
+    container-engine: podman
+    enabled: true
+    image: quay.io/acme_corp/aws_ee:latest
+    #image: registry.redhat.io/ansible-automation-platform-24/ee-supported-rhel8
+    #image: quay.io/acme_corp/servicenow-ee:latest
+    #image: quay.io/ansible-middleware/ansible-middleware-ee:latest
+    pull:
+      policy: missing
+    environment-variables:
+      pass:
+        - CONTROLLER_USERNAME
+        - CONTROLLER_PASSWORD
+        - CONTROLLER_VERIFY_SSL
+      set:
+        CONTROLLER_HOST: 192.168.100.111
+  enable-prompts: True
+  logging:
+    level: debug
+  mode: stdout
+  playbook-artifact:
+    save-as: .logs/{playbook_name}-artifact-{time_stamp}.json
+
+  time-zone: America/Sao_Paulo
