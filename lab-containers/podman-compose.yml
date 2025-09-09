@@ -13,6 +13,9 @@ services:
       - USER_GID=1000
     volumes:
       - ../../volumes/gitea:/data:Z
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   loki:
     image: grafana/loki:latest
@@ -24,6 +27,10 @@ services:
       - ../../volumes/loki:/loki:Z
     command:
       - "--config.file=/etc/loki/local-config.yml"
+      - "--web.listen-address=0.0.0.0:9090"
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   blackbox:
     image: docker.io/prom/blackbox-exporter:latest
@@ -34,6 +41,9 @@ services:
       - ./blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:Z
     command:
       - "--config.file=/etc/blackbox_exporter/config.yml"
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   alertmanager:
     image: docker.io/prom/alertmanager:latest
@@ -46,6 +56,9 @@ services:
     command:
       - "--config.file=/etc/alertmanager/config.yml"
       - "--storage.path=/alertmanager"
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   prometheus:
     image: docker.io/prom/prometheus:latest
@@ -53,11 +66,14 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:Z
+      - ./prometheus:/etc/prometheus:Z
       - ../../volumes/prometheus:/prometheus:Z
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   grafana:
     image: docker.io/grafana/grafana:latest
@@ -69,6 +85,9 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=admin  #default login: admin / admin — password change is required on first login
     volumes:
       - ../../volumes/grafana:/var/lib/grafana:Z
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
 # ============================
 # CONFIGURAÇÃO DO NETBOX = POSTGRES + REDIS + NETBOX
@@ -83,12 +102,18 @@ services:
       - POSTGRES_PASSWORD=netbox
     volumes:
       - ../../volumes/postgres:/var/lib/postgresql/data:Z
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   netbox-redis:
     image: redis:7
     container_name: netbox-redis
     volumes:
       - ../../volumes/redis:/data:Z
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"
 
   netbox:
     image: lscr.io/linuxserver/netbox:latest
@@ -111,3 +136,6 @@ services:
       - ../../volumes/netbox:/config:Z
     ports:
       - "8000:8000"
+    extra_hosts:
+      - "server01.aroque.com.br:192.168.100.26"
+      - "server02.aroque.com.br:192.168.100.27"

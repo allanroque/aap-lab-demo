@@ -1,0 +1,11 @@
+groups:
+- name: selinux_status_alerts
+  rules:
+  - alert: SELinuxDisabled
+    expr: node_selinux_current_mode == 0
+    for: 5s
+    labels:
+      severity: page
+    annotations:
+      summary: "SELinux is disabled on {{ $labels.instance }}"
+      description: "SELinux is currently disabled on the system, which may expose it to increased security risks. Immediate investigation is recommended."

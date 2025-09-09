@@ -3,7 +3,7 @@
 # ============================
 
 global:
-  scrape_interval: 15s   # Intervalo padrão entre coletas
+  scrape_interval: 15s
 
 # ============================
 # CONFIGURAÇÃO DO ALERTMANAGER
@@ -12,7 +12,12 @@ global:
 alerting:
   alertmanagers:
     - static_configs:
-        - targets: ['alertmanager:9093']  # Nome do serviço no podman-compose
+        - targets: ['alertmanager:9093']
+
+rule_files:
+  - "alert_filesystem_usage.yml"
+  - "alert_memory_usage.yml"
+  - "alert_selinux_disabled.yml"
 
 # ============================
 # JOB: Prometheus
@@ -22,7 +27,7 @@ scrape_configs:
 
   - job_name: 'prometheus'
     static_configs:
-      - targets: ['localhost:9090']  # O próprio Prometheus (self-monitoring)
+      - targets: ['localhost:9090']
 
 # ============================
 # JOB: Blackbox HTTP
@@ -35,7 +40,7 @@ scrape_configs:
     static_configs:
       - targets:
           - http://example.com
-          - http://localhost:3000  # Grafana
+          - http://localhost:3000
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -64,7 +69,7 @@ scrape_configs:
         replacement: blackbox:9115
 
 # ============================
-# JOB: Blackbox ICMP (ping)
+# JOB: Blackbox ICMP
 # ============================
 
   - job_name: 'blackbox-icmp'
@@ -75,6 +80,8 @@ scrape_configs:
       - targets:
           - 8.8.8.8
           - 1.1.1.1
+          - 192.168.100.26  # server01.aroque.com.br
+          - 192.168.100.27  # server02.aroque.com.br
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
@@ -101,3 +108,25 @@ scrape_configs:
         target_label: instance
       - target_label: __address__
         replacement: blackbox:9115
+
+# ============================
+# JOB: Linux Nodes via Node Exporter
+# ============================
+
+  - job_name: 'linux-nodes'
+    static_configs:
+      - targets:
+          - server01.aroque.com.br:9100
+          - server02.aroque.com.br:9100
+          - 192.168.100.11:9100
+
+  - job_name: 'aap-controller'
+    metrics_path: /api/controller/v2/metrics/
+    scheme: https
+    basic_auth:
+      username: "admin"
+      password: "redhat*99"
+    tls_config:
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ['192.168.100.11']
