@@ -1,0 +1,256 @@
+---
+# =============================================================================
+# AIOps Lab - Provisionar Infraestrutura AWS
+# =============================================================================
+# Gera arquivos Terraform via templates Jinja2, aplica, e registra
+# os hosts no inventário in-memory para configuração subsequente.
+#
+# Variáveis de entrada (extra_vars no AAP):
+#   servers[]       - Lista de servidores com name, role, group, instance_type
+#   project_name    - Nome do projeto (default: aiops-lab)
+#   environment     - Ambiente (default: lab)
+#   aws_region      - Região AWS (default: us-east-1)
+#
+# Uso:
+#   ansible-playbook provision-aws.yml -e @vars/defaults.yml
+#   ansible-playbook provision-aws.yml -e @vars/example-3tier.yml
+#
+# No AAP: Job Template com extra_vars para definir servers[]
+# =============================================================================
+
+- name: Provisionar infraestrutura AWS via Terraform
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - vars/defaults.yml
+
+  tasks:
+    # ---- Validações ----
+    - name: Validar variáveis obrigatórias
+      ansible.builtin.assert:
+        that:
+          - servers is defined
+          - servers | length > 0
+          - project_name is defined
+          - aws_region is defined
+        fail_msg: "Variáveis obrigatórias não definidas (servers, project_name, aws_region)"
+
+    - name: Validar campos obrigatórios de cada servidor
+      ansible.builtin.assert:
+        that:
+          - item.name is defined
+          - item.role is defined
+          - item.group is defined
+        fail_msg: "Servidor {{ item.name | default('SEM NOME') }} precisa de name, role e group"
+      loop: "{{ servers }}"
+      loop_control:
+        label: "{{ item.name | default('SEM NOME') }}"
+
+    - name: Exibir plano de provisionamento
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║  AIOps Lab - Provisionamento AWS                     ║
+          ╠══════════════════════════════════════════════════════╣
+          ║  Projeto:    {{ project_name }}
+          ║  Ambiente:   {{ environment }}
+          ║  Região:     {{ aws_region }}
+          ║  Servidores: {{ servers | length }}
+          {% for s in servers %}
+          ║    - {{ s.name }} ({{ s.role }}/{{ s.group }}) [{{ s.instance_type | default(instance_type) }}]
+          {% endfor %}
+          ╚══════════════════════════════════════════════════════╝
+
+    # ---- Preparar diretório Terraform ----
+    - name: Criar diretório do projeto Terraform
+      ansible.builtin.file:
+        path: "{{ terraform_project_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Gerar main.tf a partir do template
+      ansible.builtin.template:
+        src: templates/main.tf.j2
+        dest: "{{ terraform_project_dir }}/main.tf"
+        mode: '0644'
+
+    - name: Gerar variables.tf a partir do template
+      ansible.builtin.template:
+        src: templates/variables.tf.j2
+        dest: "{{ terraform_project_dir }}/variables.tf"
+        mode: '0644'
+
+    - name: Gerar outputs.tf a partir do template
+      ansible.builtin.template:
+        src: templates/outputs.tf.j2
+        dest: "{{ terraform_project_dir }}/outputs.tf"
+        mode: '0644'
+
+    - name: Gerar backend.tf a partir do template (se configurado)
+      ansible.builtin.template:
+        src: templates/backend.tf.j2
+        dest: "{{ terraform_project_dir }}/backend.tf"
+        mode: '0644'
+      when: terraform_backend | default(false) | bool
+
+    # ---- Ler chave SSH pública ----
+    - name: Ler chave SSH pública
+      ansible.builtin.slurp:
+        src: "{{ ssh_public_key_file }}"
+      register: ssh_pub_key_content
+
+    - name: Definir chave SSH como variável
+      ansible.builtin.set_fact:
+        ssh_public_key: "{{ ssh_pub_key_content.content | b64decode | trim }}"
+
+    # ---- Executar Terraform ----
+    - name: Inicializar e aplicar Terraform
+      community.general.terraform:
+        project_path: "{{ terraform_project_dir }}"
+        state: present
+        force_init: true
+        binary_path: "{{ terraform_binary | default(omit) }}"
+        variables:
+          aws_region: "{{ aws_region }}"
+          project_name: "{{ project_name }}"
+          environment: "{{ environment }}"
+          ssh_public_key: "{{ ssh_public_key }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+        AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+      register: terraform_result
+
+    - name: Exibir outputs do Terraform
+      ansible.builtin.debug:
+        var: terraform_result.outputs
+
+    # ---- Processar resultados ----
+    - name: Extrair IPs públicos
+      ansible.builtin.set_fact:
+        provisioned_ips: "{{ terraform_result.outputs.all_public_ips.value }}"
+        provisioned_ids: "{{ terraform_result.outputs.all_instance_ids.value }}"
+        server_info: "{{ terraform_result.outputs.all_server_info.value }}"
+
+    - name: Exibir instâncias provisionadas
+      ansible.builtin.debug:
+        msg: "Provisionadas {{ provisioned_ips | length }} instâncias: {{ provisioned_ips | join(', ') }}"
+
+    # ---- Registrar hosts no inventário in-memory ----
+    - name: Adicionar hosts provisionados ao inventário
+      ansible.builtin.add_host:
+        name: "{{ item.key }}"
+        ansible_host: "{{ item.value.public_ip }}"
+        ansible_user: "{{ ansible_user | default('ec2-user') }}"
+        ansible_ssh_private_key_file: "{{ ansible_ssh_private_key_file }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        groups:
+          - provisioned_servers
+          - "{{ item.value.group }}"
+          - "{{ item.value.role }}"
+        server_role: "{{ item.value.role }}"
+        server_group: "{{ item.value.group }}"
+        server_instance_type: "{{ item.value.instance_type }}"
+        instance_id: "{{ item.value.instance_id }}"
+        private_ip: "{{ item.value.private_ip }}"
+      loop: "{{ server_info | dict2items }}"
+      loop_control:
+        label: "{{ item.key }} → {{ item.value.public_ip }} [{{ item.value.instance_type }}]"
+
+    # ---- Aguardar SSH ----
+    - name: Aguardar SSH ficar disponível nas novas instâncias
+      ansible.builtin.wait_for:
+        host: "{{ item.value.public_ip }}"
+        port: 22
+        delay: 15
+        timeout: 300
+        state: started
+      loop: "{{ server_info | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Resumo do provisionamento
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║  PROVISIONAMENTO CONCLUÍDO                           ║
+          ╠══════════════════════════════════════════════════════╣
+          {% for name, info in server_info.items() %}
+          ║  {{ name }}:
+          ║    Public IP:     {{ info.public_ip }}
+          ║    Private IP:    {{ info.private_ip }}
+          ║    Instance ID:   {{ info.instance_id }}
+          ║    Instance Type: {{ info.instance_type }}
+          ║    Role:          {{ info.role }}
+          ║    Group:         {{ info.group }}
+          {% endfor %}
+          ╚══════════════════════════════════════════════════════╝
+
+# =============================================================================
+# Play 2: Configurar servidores provisionados (base)
+# =============================================================================
+- name: Configuração base dos servidores provisionados
+  hosts: provisioned_servers
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Aguardar cloud-init finalizar
+      ansible.builtin.command: cloud-init status --wait
+      changed_when: false
+      timeout: 300
+
+    - name: Atualizar pacotes do sistema
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        update_only: true
+      register: update_result
+
+    - name: Instalar pacotes base
+      ansible.builtin.dnf:
+        name:
+          - vim
+          - curl
+          - wget
+          - net-tools
+          - bind-utils
+          - jq
+          - python3
+          - python3-pip
+          - firewalld
+          - chrony
+          - stress
+        state: present
+
+    - name: Habilitar e iniciar firewalld
+      ansible.builtin.systemd:
+        name: firewalld
+        state: started
+        enabled: true
+
+    - name: Habilitar e iniciar chronyd
+      ansible.builtin.systemd:
+        name: chronyd
+        state: started
+        enabled: true
+
+    - name: Definir hostname
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Configurar SELinux como enforcing
+      ansible.posix.selinux:
+        policy: targeted
+        state: enforcing
+
+    - name: Exibir informações do servidor
+      ansible.builtin.debug:
+        msg: |
+          Servidor: {{ inventory_hostname }}
+          IP: {{ ansible_host }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Tipo: {{ server_instance_type | default('N/A') }}
+          Role: {{ server_role | default('unknown') }}
+          Group: {{ server_group | default('unknown') }}

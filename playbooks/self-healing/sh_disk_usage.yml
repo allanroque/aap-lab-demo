@@ -1,0 +1,42 @@
+---
+- name: Automate File and Log Management
+  hosts: all
+  become: true  # Necessário para permissões de root para algumas tarefas
+  tasks:
+    - name: List top 5 largest files in specified directories
+      ansible.builtin.shell:
+        cmd: find {{ item }} -type f -exec du -h {} + 2>/dev/null | sort -rh | head -n 5
+      loop:
+        - "/"
+        - "/opt"
+        - "/var"
+        - "/var/log"
+      register: largest_files
+      changed_when: false
+
+    - name: Display largest files
+      ansible.builtin.debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ largest_files.results }}"
+      when: item.stdout_lines is defined
+
+    - name: Force log rotation
+      ansible.builtin.command:
+        cmd: logrotate -f /etc/logrotate.conf
+      ignore_errors: true  # Continue mesmo se logrotate falhar
+
+    - name: Cleanup temporary and specific log files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/*"
+        - "/var/tmp/*"
+        - "/var/log/app.log"
+        - "/var/cache/dnf/*"
+        - "/var/log/app.log"
+
+    - name: Set Job ID number
+      set_stats:
+        data:
+          ac_job_id: "{{ awx_job_id | default('0') }}"

@@ -1,0 +1,32 @@
+---
+- name: Close Change Request in ServiceNow
+  hosts: localhost
+  connection: local
+  vars:
+    # Entrada principal: número da change a ser fechada
+    sn_change_request_number: "{{ sn_change_request_number }}"
+    sn_closure_code: "successful"
+    sn_closure_notes: "Change successfully implemented - Job ID: {{ awx_job_id | default('0') }}"
+  collections:
+    - servicenow.itsm
+
+  tasks:
+    - name: Close change request
+      servicenow.itsm.change_request:
+        state: closed
+        instance:
+          host: "{{ snow_host }}"
+          username: "{{ snow_username }}"
+          password: "{{ snow_password }}"
+        number: "{{ sn_change_request_number }}"
+        close_code: "{{ sn_closure_code }}"
+        close_notes: "{{ sn_closure_notes }}"
+
+    - debug:
+        msg: "Change Request {{ sn_change_request_number }} closed successfully by Ansible"
+
+    - name: Exportar variáveis para workflow
+      set_stats:
+        data:
+          sn_change_request_number: "{{ sn_change_request_number }}"
+          sn_change_status: "closed"

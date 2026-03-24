@@ -1,0 +1,69 @@
+---
+- name: Network Remediation
+  hosts: target
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Check current iptables rules
+      ansible.builtin.shell: iptables -L -n | grep -E 'DROP|REJECT' || echo "No DROP/REJECT rules found"
+      register: iptables_rules_before
+      changed_when: false
+
+    - name: Display current iptables rules
+      ansible.builtin.debug:
+        msg: "Current problematic iptables rules:\n{{ iptables_rules_before.stdout }}"
+
+    - name: Get list of DROP rules
+      ansible.builtin.shell: |
+        iptables -L INPUT -n --line-numbers | grep DROP | awk '{print $1}' | sort -rn
+      register: drop_rule_numbers
+      changed_when: false
+
+    - name: Remove DROP rules
+      ansible.builtin.shell: |
+        for rule_num in $(iptables -L INPUT -n --line-numbers | grep DROP | awk '{print $1}' | sort -rn); do
+          iptables -D INPUT $rule_num 2>/dev/null || true
+        done
+        echo "Removed DROP rules"
+      changed_when: true
+      register: rules_removed
+      when: drop_rule_numbers.stdout | length > 0
+
+    - name: Display rule removal status
+      ansible.builtin.debug:
+        msg: "{{ rules_removed.stdout | default('No DROP rules to remove') }}"
+
+    - name: Flush problematic rules if needed
+      ansible.builtin.shell: |
+        # Try to restore default policies without breaking connectivity
+        iptables -P INPUT ACCEPT 2>/dev/null || true
+        iptables -P FORWARD ACCEPT 2>/dev/null || true
+        iptables -P OUTPUT ACCEPT 2>/dev/null || true
+        echo "Default policies restored"
+      changed_when: true
+      register: policies_reset
+
+    - name: Test network connectivity
+      ansible.builtin.shell: ping -c 2 8.8.8.8 2>&1 | tail -1
+      register: network_test
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display network connectivity test
+      ansible.builtin.debug:
+        msg: "Network test result:\n{{ network_test.stdout }}"
+
+    - name: Check final iptables rules
+      ansible.builtin.shell: iptables -L -n | grep -E 'DROP|REJECT' || echo "No DROP/REJECT rules found"
+      register: iptables_rules_after
+      changed_when: false
+
+    - name: Network remediation report
+      ansible.builtin.debug:
+        msg:
+          - "=== NETWORK REMEDIATION REPORT ==="
+          - "Rules before remediation: {{ iptables_rules_before.stdout | default('None found') }}"
+          - "{{ policies_reset.stdout }}"
+          - "Rules after remediation: {{ iptables_rules_after.stdout }}"
+          - "Network connectivity: {{ 'Success' if network_test.rc == 0 else 'Failed' }}"

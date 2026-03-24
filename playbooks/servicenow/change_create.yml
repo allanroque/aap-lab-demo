@@ -1,0 +1,44 @@
+- name: Automate SNOW - Change Request Create
+  hosts: localhost
+  connection: local
+  collections:
+    - servicenow.itsm
+
+  vars:
+    sn_short_description: "Change Open Via Ansible"
+    sn_description: "Change Open Via Ansible"
+    sn_impact_value: "low"
+    sn_urgency_value: "low"
+    sn_category_value: "network"
+
+  tasks:
+#    - name: DEBUG credential injection
+#      ansible.builtin.debug:
+#        msg: "{{ lookup('env', 'snow_username') }}"
+
+    - name: Create change request
+      servicenow.itsm.change_request:
+        state: present
+        instance:
+          host: "{{ snow_host }}"
+          username: "{{ snow_username }}"
+          password: "{{ snow_password }}"
+        short_description: "{{ sn_short_description }}"
+        description: "{{ sn_description }}"
+        impact: "{{ sn_impact_value }}"
+        urgency: "{{ sn_urgency_value }}"
+        category: "{{ sn_category_value }}"
+      register: new_change_request
+
+    - name: Set change request number
+      set_fact:
+        sn_change_request_number: "{{ new_change_request.record.number }}"
+
+    - name: Debug change request number
+      ansible.builtin.debug:
+        var: new_change_request.record.number
+
+    - name: Set change request number
+      set_stats:
+        data:
+          sn_change_request_number: "{{ new_change_request.record.number }}"

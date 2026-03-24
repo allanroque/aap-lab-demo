@@ -1,0 +1,20 @@
+# Credenciais e segredos
+.aap-credentials
+.env
+*.secret
+**/.aap-credentials
+
+# Logs
+*.log
+ansible-navigator.log
+
+# Volumes locais
+volumes/
+
+# Editor
+*.swp
+*.swo
+*~
+.DS_Store
+.claude
+.claude/worktrees/

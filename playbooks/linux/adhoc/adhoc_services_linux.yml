@@ -1,0 +1,20 @@
+---
+- name: Start the RHEL service
+  hosts: localhost
+  vars:
+    ansible_deprecation_warnings: false
+    ansible_command_warnings: false
+  tasks:
+    - name: Start the RHEL service
+      ansible.builtin.debug:
+        msg: "Starting the RHEL service..."
+
+    - name: Waiting for RHEL service to be started
+      ansible.builtin.pause:
+        seconds: 3
+      changed_when: false
+      no_log: true
+
+    - name: Status of the RHEL service starting
+      ansible.builtin.debug:
+        msg: "RHEL service starting is completed successfully!"

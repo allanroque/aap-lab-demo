@@ -1,0 +1,131 @@
+---
+# =============================================================================
+# AIOps Lab - Escalar Infraestrutura AWS
+# =============================================================================
+# Adiciona ou remove servidores modificando a lista servers[] e
+# reaplicando o Terraform. Os novos hosts são configurados automaticamente.
+#
+# Uso:
+#   ansible-playbook scale-aws.yml -e @vars/scale-up.yml
+#   ansible-playbook scale-aws.yml -e @vars/scale-down.yml
+# =============================================================================
+
+- name: Escalar infraestrutura AWS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - vars/defaults.yml
+
+  tasks:
+    - name: Exibir plano de escala
+      ansible.builtin.debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════╗
+          ║  AIOps Lab - Escala AWS                              ║
+          ╠══════════════════════════════════════════════════════╣
+          ║  Projeto:    {{ project_name }}
+          ║  Servidores desejados: {{ servers | length }}
+          {% for s in servers %}
+          ║    - {{ s.name }} ({{ s.role }}/{{ s.group }}) [{{ s.instance_type | default(instance_type) }}]
+          {% endfor %}
+          ╚══════════════════════════════════════════════════════╝
+
+    - name: Verificar diretório Terraform existente
+      ansible.builtin.stat:
+        path: "{{ terraform_project_dir }}"
+      register: tf_dir
+
+    - name: Falhar se diretório Terraform não existe
+      ansible.builtin.fail:
+        msg: >
+          Diretório Terraform não encontrado em {{ terraform_project_dir }}.
+          Execute provision-aws.yml primeiro.
+      when: not tf_dir.stat.exists
+
+    # ---- Regerar templates com nova lista de servers ----
+    - name: Regerar main.tf com nova configuração
+      ansible.builtin.template:
+        src: templates/main.tf.j2
+        dest: "{{ terraform_project_dir }}/main.tf"
+        mode: '0644'
+
+    - name: Regerar outputs.tf com nova configuração
+      ansible.builtin.template:
+        src: templates/outputs.tf.j2
+        dest: "{{ terraform_project_dir }}/outputs.tf"
+        mode: '0644'
+
+    # ---- Ler chave SSH ----
+    - name: Ler chave SSH pública
+      ansible.builtin.slurp:
+        src: "{{ ssh_public_key_file }}"
+      register: ssh_pub_key_content
+
+    - name: Definir chave SSH
+      ansible.builtin.set_fact:
+        ssh_public_key: "{{ ssh_pub_key_content.content | b64decode | trim }}"
+
+    # ---- Aplicar mudanças ----
+    - name: Aplicar Terraform (escala)
+      community.general.terraform:
+        project_path: "{{ terraform_project_dir }}"
+        state: present
+        force_init: false
+        binary_path: "{{ terraform_binary | default(omit) }}"
+        variables:
+          aws_region: "{{ aws_region }}"
+          project_name: "{{ project_name }}"
+          environment: "{{ environment }}"
+          ssh_public_key: "{{ ssh_public_key }}"
+      environment:
+        AWS_ACCESS_KEY_ID: "{{ aws_access_key_id }}"
+        AWS_SECRET_ACCESS_KEY: "{{ aws_secret_access_key }}"
+      register: terraform_result
+
+    - name: Extrair informações atualizadas
+      ansible.builtin.set_fact:
+        provisioned_ips: "{{ terraform_result.outputs.all_public_ips.value }}"
+        server_info: "{{ terraform_result.outputs.all_server_info.value }}"
+
+    - name: Adicionar novos hosts ao inventário in-memory
+      ansible.builtin.add_host:
+        name: "{{ item.key }}"
+        ansible_host: "{{ item.value.public_ip }}"
+        ansible_user: "{{ ansible_user | default('ec2-user') }}"
+        ansible_ssh_private_key_file: "{{ ansible_ssh_private_key_file }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        groups:
+          - provisioned_servers
+          - "{{ item.value.group }}"
+          - "{{ item.value.role }}"
+        server_role: "{{ item.value.role }}"
+        server_group: "{{ item.value.group }}"
+        server_instance_type: "{{ item.value.instance_type }}"
+      loop: "{{ server_info | dict2items }}"
+      loop_control:
+        label: "{{ item.key }} → {{ item.value.public_ip }}"
+
+    - name: Aguardar SSH nos novos hosts
+      ansible.builtin.wait_for:
+        host: "{{ item.value.public_ip }}"
+        port: 22
+        delay: 10
+        timeout: 300
+        state: started
+      loop: "{{ server_info | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+
+    - name: Resumo da escala
+      ansible.builtin.debug:
+        msg: |
+          Escala concluída: {{ server_info | length }} servidores ativos
+          {% for name, info in server_info.items() %}
+            {{ name }}: {{ info.public_ip }} ({{ info.role }}/{{ info.group }}) [{{ info.instance_type }}]
+          {% endfor %}
+
+# --- Configurar novos servidores ---
+- name: Configurar novos servidores
+  ansible.builtin.import_playbook: configure-servers.yml

@@ -1,0 +1,32 @@
+---
+- name: Testar resolução DNS (direta e reversa)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    dns_server: "192.168.100.11"
+    host_name: "web02.aroque.com.br"
+
+  tasks:
+    - name: Resolver hostname (DNS direto)
+      ansible.builtin.set_fact:
+        resolved_ip: "{{ lookup('community.general.dig', host_name, '@' + dns_server) }}"
+
+    - name: Exibir resultado da resolução direta
+      ansible.builtin.debug:
+        msg: "Hostname {{ host_name }} resolvido para '{{ resolved_ip }}'"
+
+    - name: Marcar falha se DNS direto não resolver
+      ansible.builtin.fail:
+        msg: "DNS NÃO resolveu o hostname {{ host_name }} no servidor {{ dns_server }}"
+      when: resolved_ip | trim == ""
+
+    - name: Resolver IP (DNS reverso)
+      ansible.builtin.command: "dig -x {{ resolved_ip }} @{{ dns_server }} +short"
+      register: dig_reverse_result
+      changed_when: false
+      failed_when: false
+
+    - name: Exibir resultado da resolução reversa
+      ansible.builtin.debug:
+        msg: "IP {{ resolved_ip }} resolvido para '{{ dig_reverse_result.stdout | default('') | trim }}'"

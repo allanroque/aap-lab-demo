@@ -1,0 +1,137 @@
+- name: Instalar e configurar Promtail em servidores Linux
+  hosts: all
+  become: true
+  vars:
+    loki_server_url: "http://192.168.100.1:3100/loki/api/v1/push"
+    promtail_version: "3.5.7"
+    promtail_user: promtail
+    promtail_group: adm
+    promtail_config_path: /etc/promtail/config.yml
+    promtail_service_path: /etc/systemd/system/promtail.service
+    log_base_dir: "/var/log"
+
+
+  tasks:
+
+    - name: Criar usuário promtail
+      ansible.builtin.user:
+        name: "{{ promtail_user }}"
+        system: true
+        shell: /sbin/nologin
+
+
+    - name: Criar diretórios de configuração e dados
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ promtail_user }}"
+        group: "{{ promtail_user }}"
+        mode: '0755'
+      loop:
+        - /etc/promtail
+        - /var/lib/promtail
+        - /var/log/promtail
+
+
+
+    - name: Baixar Promtail binário
+      ansible.builtin.get_url:
+        url: "https://github.com/grafana/loki/releases/download/v{{ promtail_version }}/promtail-linux-arm64.zip"
+        dest: /tmp/promtail.zip
+        mode: '0644'
+
+    - name: Instalar dependência unzip
+      ansible.builtin.package:
+        name: unzip
+        state: present
+
+    - name: Descompactar Promtail
+      ansible.builtin.unarchive:
+        src: /tmp/promtail.zip
+        dest: /usr/local/bin/
+        remote_src: true
+        mode: '0755'
+
+    - name: Aplicar configuração Promtail baseada no grupo
+      ansible.builtin.template:
+        src: templates/promtail.yml.j2
+        dest: "{{ promtail_config_path }}"
+        owner: "{{ promtail_user }}"
+        group: "{{ promtail_user }}"
+        mode: '0644'
+
+    - name: Copiar unidade systemd Promtail
+      ansible.builtin.copy:
+        src: files/promtail.service
+        dest: "{{ promtail_service_path }}"
+        mode: '0644'
+    - name: Habilitar persistência do journald (logs de sistema)
+      block:
+        - name: Garantir diretório persistente para journald
+          ansible.builtin.file:
+            path: /var/log/journal
+            state: directory
+            owner: root
+            group: root
+            mode: '0755'
+
+        - name: Garantir configuração persistente no journald.conf
+          ansible.builtin.lineinfile:
+            path: /etc/systemd/journald.conf
+            regexp: '^#?Storage='
+            line: 'Storage=persistent'
+            insertafter: '^\[Journal\]'
+            backup: yes
+          notify: Restart journald
+
+      when: ansible_facts['os_family'] == "RedHat"
+
+    - name: 1. Ensure ACL package is installed
+      ansible.builtin.package:
+        name: acl
+        state: present
+
+
+    - name: Set recursive ACLs on EXISTING logs and directories
+      ansible.posix.acl:
+        path: "{{ log_base_dir }}"
+        entity: "{{ promtail_user }}"
+        etype: user
+        permissions: rX
+        state: present
+        recursive: yes
+      notify: Restart promtail service
+
+    - name: Set default ACLs for future logs and directories
+      ansible.posix.acl:
+        path: "{{ log_base_dir }}"
+        entity: "{{ promtail_user }}"
+        etype: user
+        permissions: rX
+        state: present
+        recursive: yes
+        default: yes  
+      notify: Restart promtail service
+
+    - name: Recarregar systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Habilitar e iniciar Promtail
+      ansible.builtin.systemd:
+        name: promtail
+        state: started
+        enabled: true
+
+  handlers:
+  - name: Restart journald
+    ansible.builtin.service:
+      name: systemd-journald
+      state: restarted
+
+  - name: Restart promtail service
+    ansible.builtin.service:
+      name: promtail
+      state: restarted
+
+

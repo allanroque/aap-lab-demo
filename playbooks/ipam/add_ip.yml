@@ -1,0 +1,43 @@
+---
+- name: Add IP address to IPAM
+  hosts: localhost
+  gather_facts: false
+  vars:
+    host_name: "server01"
+    host_domain: "aroque.com.br"
+    host_fqdn_temp: "{{ host_name }}.{{ host_domain }}"
+    host_fqdn: "{{ host_fqdn_temp.split('.')[0] }}.{{ host_domain }}"
+    host_ip: "192.168.100.60"
+    host_type: "VIP"
+    host_description: "Configured by Ansible"
+    net_prefix: "192.168.100.0"
+    net_cidr: "24"
+    netbox_url: "http://host.containers.internal:8000"
+    netbox_token: ""
+  tasks:
+    - name: Register a new IP on IPAM for {{ host_name }}
+      netbox.netbox.netbox_ip_address:
+        netbox_url: "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          address: "{{ host_ip }}/{{ net_cidr }}"
+          dns_name: "{{ host_fqdn }}"
+          description: "{{ host_description }}"
+          role: "{{ host_type }}"
+          status: active
+        state: present
+        validate_certs: no
+      register: host_ip_output
+
+    - name: Debug IPAM response
+      debug:
+        var: host_ip_output
+
+    - name: Extract IP from IPAM response
+      set_fact:
+        host_ip: "{{ host_ip_output.ip_address.address.split('/')[0] }}"
+
+    - name: Set Job ID number
+      set_stats:
+        data:
+          ac_job_id: "{{ awx_job_id | default('0') }}"

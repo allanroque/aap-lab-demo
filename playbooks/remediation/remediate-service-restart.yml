@@ -1,0 +1,80 @@
+---
+- name: Service Restart Remediation
+  hosts: "{{ target_host | default('all') }}"
+  become: true
+  gather_facts: false
+  vars:
+    service: httpd
+
+  tasks:
+    - name: Check current service status
+      ansible.builtin.systemd:
+        name: "{{ service }}"
+      register: service_status_before
+      changed_when: false
+
+    - name: Display initial service status
+      ansible.builtin.debug:
+        msg: "{{ service }} status: {{ service_status_before.status.ActiveState }}"
+
+    - name: Gather recent logs from journalctl
+      ansible.builtin.shell: journalctl -u {{ service }} -n 20 --no-pager
+      register: service_logs
+      changed_when: false
+      ignore_errors: true
+
+    - name: Display recent logs
+      ansible.builtin.debug:
+        msg: "Recent {{ service }} logs:\n{{ service_logs.stdout }}"
+
+    - name: Restart service
+      ansible.builtin.systemd:
+        name: "{{ service }}"
+        state: restarted
+        daemon_reload: true
+      register: service_restart
+
+    - name: Enable service on boot
+      ansible.builtin.systemd:
+        name: "{{ service }}"
+        enabled: true
+      changed_when: false
+
+    - name: Wait for service stabilization
+      ansible.builtin.pause:
+        seconds: 5
+
+    - name: Verify service is active
+      ansible.builtin.systemd:
+        name: "{{ service }}"
+      register: service_status_after
+      changed_when: false
+
+    - name: Display final service status
+      ansible.builtin.debug:
+        msg: "{{ service }} status: {{ service_status_after.status.ActiveState }}"
+
+    - name: HTTP health check for httpd
+      ansible.builtin.uri:
+        url: "http://localhost:80/"
+        method: GET
+        status_code: [200, 301, 302, 403]
+      register: http_health
+      changed_when: false
+      when: service == 'httpd' or service == 'nginx'
+      ignore_errors: true
+
+    - name: Display HTTP health check result
+      ansible.builtin.debug:
+        msg: "HTTP health check: {{ http_health.status | default('N/A') }}"
+      when: service == 'httpd' or service == 'nginx'
+
+    - name: Service restart report
+      ansible.builtin.debug:
+        msg:
+          - "=== SERVICE RESTART REPORT ==="
+          - "Service: {{ service }}"
+          - "Initial status: {{ service_status_before.status.ActiveState }}"
+          - "Final status: {{ service_status_after.status.ActiveState }}"
+          - "Restart successful: {{ service_restart.changed }}"
+          - "HTTP status: {{ http_health.status | default('N/A') }}"

@@ -1,0 +1,86 @@
+---
+- name: Deploy Parasol Insurance Website to RHEL 9 with Nginx
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    website_url: "https://github.com/ansible-tmm/parasol-website"
+    website_repo: "https://github.com/ansible-tmm/parasol-website.git"
+    nginx_root: "/usr/share/nginx/html"
+    temp_dir: "/tmp/parasol-website"
+
+  pre_tasks:
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+        delay: 5
+
+  tasks:
+    - name: Install git (required to clone the repository)
+      ansible.builtin.dnf:
+        name: git
+        state: present
+
+    - name: Ensure Nginx is installed (RHEL)
+      ansible.builtin.dnf:
+        name: nginx
+        state: present
+
+    - name: Remove existing nginx html directory contents
+      ansible.builtin.file:
+        path: "{{ nginx_root }}/"
+        state: absent
+
+    - name: Ensure nginx html directory exists
+      ansible.builtin.file:
+        path: "{{ nginx_root }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Clone Parasol website repository
+      ansible.builtin.git:
+        repo: "{{ website_repo }}"
+        dest: "{{ temp_dir }}"
+        version: main
+        force: true
+
+    - name: Copy website files to nginx root
+      ansible.builtin.copy:
+        src: "{{ temp_dir }}/"
+        dest: "{{ nginx_root }}/"
+        remote_src: true
+        owner: root
+        group: root
+        mode: '0644'
+        directory_mode: '0755'
+
+    - name: Restore SELinux contexts on NGINX html directory
+      ansible.builtin.command: restorecon -Rv /usr/share/nginx/html
+      changed_when: false
+
+    - name: Ensure correct permissions on NGINX web root
+      ansible.builtin.file:
+        path: /usr/share/nginx/html
+        owner: root
+        group: root
+        mode: '0755'
+        recurse: true
+
+    - name: Clean up temporary directory
+      ansible.builtin.file:
+        path: "{{ temp_dir }}"
+        state: absent
+
+    - name: Restart nginx service
+      ansible.builtin.systemd:
+        name: nginx
+        state: restarted
+        enabled: true
+
+    - name: Ensure nginx is running
+      ansible.builtin.systemd:
+        name: nginx
+        state: started
+        enabled: true

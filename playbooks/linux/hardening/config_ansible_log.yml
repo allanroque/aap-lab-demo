@@ -1,0 +1,22 @@
+---
+- name: Setup Automation Log Directory
+  hosts: all
+  become: true  # Necessário para realizar alterações em /var/log
+  tasks:
+    - name: Create directory for automation logs
+      ansible.builtin.file:
+        path: /var/log/ansible
+        state: directory
+        mode: '0755'
+        owner: ansible
+        group: root
+
+    - name: Verify directory creation
+      ansible.builtin.stat:
+        path: /var/log/ansible
+      register: log_dir
+
+    - name: Show directory details
+      ansible.builtin.debug:
+        msg: "Directory /var/log/ansible created with permissions {{ log_dir.stat.mode }}"
+      when: log_dir.stat.exists

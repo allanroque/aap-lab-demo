@@ -1,0 +1,25 @@
+---
+- name: Configure SELinux Settings
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Enable SELinux
+      ansible.posix.selinux:
+        policy: targeted
+        state: enforcing
+
+    - name: Verify SELinux status
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: False
+
+    - name: Show SELinux status
+      ansible.builtin.debug:
+        msg: "The SELinux status is {{ selinux_status.stdout }}"
+
+
+    - name: Set Job ID number
+      set_stats:
+        data:
+          ac_job_id: "{{ awx_job_id  | default('0') }}"

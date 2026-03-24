@@ -1,0 +1,56 @@
+---
+- name: Gerenciar usuários de serviço e sudoers
+  hosts: all
+  become: true
+
+  vars:
+    service_users:
+      - name: support
+        groups: ["service"]
+      - name: itops
+        groups: ["service"]
+
+    sudo_groups:
+      - group: itops
+        nopasswd: true
+
+  tasks:
+
+    - name: Criar grupo de serviço se não existir
+      group:
+        name: service
+        state: present
+
+    - name: Criar usuários de serviço
+      user:
+        name: "{{ item.name }}"
+        groups: "{{ item.groups | join(',') }}"
+        shell: /bin/bash
+        create_home: yes
+        state: present
+      loop: "{{ service_users }}"
+
+    - name: Criar grupos de sudo dedicados (se necessário)
+      group:
+        name: "{{ item.group }}"
+        state: present
+      loop: "{{ sudo_groups }}"
+
+    - name: Adicionar usuários aos grupos de sudo dedicados
+      user:
+        name: "{{ item.name }}"
+        groups: "{{ item.name }}"
+        append: yes
+      loop: "{{ service_users }}"
+      when: item.name in sudo_groups | map(attribute='group') | list
+
+    - name: Configurar sudoers por grupo
+      copy:
+        dest: "/etc/sudoers.d/{{ item.group }}"
+        content: |
+          %{{ item.group }} ALL=(ALL) {{ "NOPASSWD:" if item.nopasswd else "" }} ALL
+        owner: root
+        group: root
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      loop: "{{ sudo_groups }}"

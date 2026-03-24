@@ -1,0 +1,9 @@
+{% if terraform_backend | default(false) %}
+terraform {
+  backend "s3" {
+    bucket = "{{ terraform_state_bucket }}"
+    key    = "{{ project_name }}/terraform.tfstate"
+    region = "{{ aws_region }}"
+  }
+}
+{% endif %}

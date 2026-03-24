@@ -1,0 +1,59 @@
+---
+# =============================================================================
+# Exemplo: Ambiente 3-Tier (Web + App + DB)
+# =============================================================================
+# Cada servidor tem seu próprio instance_type (modelo).
+# Tags (name, group, role) são usadas pelo inventário dinâmico do AAP.
+#
+# Uso:
+#   ansible-playbook provision-aws.yml -e @vars/example-3tier.yml
+#   No AAP: extra_vars no Job Template
+# =============================================================================
+
+project_name: "aiops-3tier"
+environment: "lab"
+aws_region: "us-east-1"
+
+servers:
+  # --- Web Tier (instâncias menores) ---
+  - name: "web-01"
+    role: "webserver"
+    group: "web_tier"
+    instance_type: "t3.small"
+    disk_size: 20
+    extra_tags:
+      Tier: "frontend"
+      Service: "apache"
+      Monitoring: "enabled"
+
+  - name: "web-02"
+    role: "webserver"
+    group: "web_tier"
+    instance_type: "t3.small"
+    disk_size: 20
+    extra_tags:
+      Tier: "frontend"
+      Service: "apache"
+      Monitoring: "enabled"
+
+  # --- App Tier (instâncias médias) ---
+  - name: "app-01"
+    role: "appserver"
+    group: "app_tier"
+    instance_type: "t3.medium"
+    disk_size: 40
+    extra_tags:
+      Tier: "backend"
+      Service: "tomcat"
+      Monitoring: "enabled"
+
+  # --- DB Tier (instância maior, mais disco) ---
+  - name: "db-01"
+    role: "database"
+    group: "db_tier"
+    instance_type: "t3.large"
+    disk_size: 100
+    extra_tags:
+      Tier: "data"
+      Service: "postgresql"
+      Monitoring: "enabled"

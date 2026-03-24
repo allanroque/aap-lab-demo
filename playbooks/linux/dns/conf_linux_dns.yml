@@ -1,0 +1,47 @@
+---
+- name: Configurar DNS em interfaces gerenciadas pelo NetworkManager (RHEL 9)
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    # Pode ser substituído por -e 'dns_servers=["8.8.8.8"]'
+    dns_servers:
+    target_interface: "{{ ansible_default_ipv4.interface }}"
+
+  tasks:
+
+    - name: Garantir que o NetworkManager está instalado e ativo
+      service:
+        name: NetworkManager
+        state: started
+        enabled: true
+
+    - name: Verificar tipo de dns_servers
+      debug:
+        msg: "dns_servers={{ dns_servers }}, tipo={{ dns_servers | type_debug }}"
+
+    - name: Normalizar dns_servers como lista (caso seja string simples)
+      set_fact:
+        dns_servers_list: "{{ [dns_servers] if dns_servers is string else dns_servers }}"
+
+    - name: Exibir DNS final que será aplicado
+      debug:
+        msg: "Aplicando DNS: {{ dns_servers_list | join(' ') }} na interface {{ target_interface }}"
+
+    - name: Obter nome da conexão ativa com a interface-alvo
+      shell: |
+        nmcli -t -f NAME,DEVICE connection show --active | grep {{ target_interface }} | cut -d: -f1
+      register: active_connection_name
+      changed_when: false
+
+    - name: Configurar DNS via nmcli (modo estático)
+      shell: |
+        nmcli connection modify "{{ active_connection_name.stdout }}" \
+        ipv4.ignore-auto-dns yes \
+        ipv4.dns "{{ dns_servers_list | join(' ') }}"
+
+    - name: Reiniciar a conexão de rede para aplicar DNS
+      shell: |
+        nmcli connection down "{{ active_connection_name.stdout }}" && \
+        nmcli connection up "{{ active_connection_name.stdout }}"

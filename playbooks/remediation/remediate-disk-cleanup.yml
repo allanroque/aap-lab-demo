@@ -1,0 +1,90 @@
+---
+- name: Disk Cleanup Remediation
+  hosts: "{{ target_host | default('all') }}"
+  become: true
+  gather_facts: true
+  vars:
+    cleanup_tmp_days: 7
+    cleanup_logs_days: 30
+
+  tasks:
+    - name: Get initial disk usage
+      ansible.builtin.shell: df -h / | tail -1 | awk '{print $5}'
+      register: initial_disk_usage
+      changed_when: false
+
+    - name: Display initial disk usage
+      ansible.builtin.debug:
+        msg: "Initial disk usage: {{ initial_disk_usage.stdout }}"
+
+    - name: Check if demo artifact exists
+      ansible.builtin.stat:
+        path: /tmp/diskfiller.img
+      register: diskfiller_stat
+
+    - name: Remove demo artifact if exists
+      ansible.builtin.file:
+        path: /tmp/diskfiller.img
+        state: absent
+      when: diskfiller_stat.stat.exists
+      register: diskfiller_removed
+
+    - name: Display diskfiller removal status
+      ansible.builtin.debug:
+        msg: "Removed /tmp/diskfiller.img: {{ diskfiller_removed.changed }}"
+      when: diskfiller_stat.stat.exists
+
+    - name: Clean /tmp files older than {{ cleanup_tmp_days }} days
+      ansible.builtin.shell: |
+        find /tmp -type f -atime +{{ cleanup_tmp_days }} -delete 2>/dev/null || true
+        echo "Cleaned /tmp"
+      changed_when: true
+      register: tmp_cleanup
+
+    - name: Clean /var/tmp files older than {{ cleanup_tmp_days }} days
+      ansible.builtin.shell: |
+        find /var/tmp -type f -atime +{{ cleanup_tmp_days }} -delete 2>/dev/null || true
+        echo "Cleaned /var/tmp"
+      changed_when: true
+      register: var_tmp_cleanup
+
+    - name: Clean old compressed and backup logs
+      ansible.builtin.shell: |
+        find /var/log -type f \( -name "*.gz" -o -name "*.old" \) -mtime +{{ cleanup_logs_days }} -delete 2>/dev/null || true
+        echo "Cleaned old logs"
+      changed_when: true
+      register: logs_cleanup
+
+    - name: Vacuum journalctl logs (7 days)
+      ansible.builtin.shell: journalctl --vacuum-time=7d
+      register: journalctl_vacuum
+      changed_when: true
+
+    - name: Clean dnf/yum cache
+      ansible.builtin.shell: |
+        dnf clean all 2>/dev/null || yum clean all 2>/dev/null || true
+        echo "Cleaned package cache"
+      changed_when: true
+      register: pkg_cache_cleanup
+
+    - name: Get final disk usage
+      ansible.builtin.shell: df -h / | tail -1 | awk '{print $5}'
+      register: final_disk_usage
+      changed_when: false
+
+    - name: Display final disk usage
+      ansible.builtin.debug:
+        msg: "Final disk usage: {{ final_disk_usage.stdout }}"
+
+    - name: Disk cleanup report
+      ansible.builtin.debug:
+        msg:
+          - "=== DISK CLEANUP REPORT ==="
+          - "Initial usage: {{ initial_disk_usage.stdout }}"
+          - "Final usage: {{ final_disk_usage.stdout }}"
+          - "Demo artifact removed: {{ diskfiller_removed.changed | default(false) }}"
+          - "{{ tmp_cleanup.stdout }}"
+          - "{{ var_tmp_cleanup.stdout }}"
+          - "{{ logs_cleanup.stdout }}"
+          - "Journalctl vacuum: {{ journalctl_vacuum.stdout | default('completed') }}"
+          - "{{ pkg_cache_cleanup.stdout }}"

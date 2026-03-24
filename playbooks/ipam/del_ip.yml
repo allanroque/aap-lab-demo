@@ -1,0 +1,33 @@
+---
+- name: Del IP address to IPAM
+  hosts: localhost
+  gather_facts: false
+  vars:
+    host_name: "{{ host_fqdn.split('.')[0] }}"
+    host_domain: "aroque.com.br"
+    host_fqdn: "{{ host_name }}.{{ host_domain }}"
+    host_ip: "192.168.100.23"
+    host_type: "VIP"
+    host_description: "Configured by Ansible"
+    net_prefix: "192.168.100.0"
+    net_cidr: "24"
+    netbox_url: "http://host.containers.internal:8000"
+    netbox_token: ""
+  tasks:
+    - name: Debug var "{{ host_ip }}"
+      debug:
+        var: host_ip
+
+    - name: Remove IP address from IPAM
+      netbox.netbox.netbox_ip_address:
+        netbox_url: "{{ netbox_url }}"
+        netbox_token: "{{ netbox_token }}"
+        data:
+          address: "{{ host_ip }}/{{ net_cidr }}"
+        state: absent
+        validate_certs: no
+
+    - name: Set Job ID number
+      set_stats:
+        data:
+          ac_job_id: "{{ awx_job_id | default('0') }}"

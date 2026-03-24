@@ -1,0 +1,83 @@
+---
+# tasks file for deploy_webserver_apache
+- name: Deploy Apache Web Server to RHEL 9
+  hosts: all
+  become: true
+  gather_facts: true
+
+  vars:
+    apache_test_message: "Apache Test Message"
+    http_url: "http://{{ ansible_fqdn | default(inventory_hostname) }}"
+
+  tasks:
+    - name: latest Apache version installed
+      ansible.builtin.yum:
+        name: httpd
+        state: latest
+
+    - name: latest firewalld version installed
+      ansible.builtin.yum:
+        name: firewalld
+        state: latest
+
+    - name: firewalld enabled and running
+      ansible.builtin.service:
+        name: firewalld
+        enabled: true
+        state: started
+
+    - name: firewalld permits http service
+      ansible.posix.firewalld:
+        service: http
+        permanent: true
+        state: enabled
+        immediate: true
+
+    - name: Ensure proper Apache configuration (httpd.conf)
+      ansible.builtin.copy:
+        src: httpd.conf
+        dest: /etc/httpd/conf/httpd.conf
+      notify: apache-restart
+
+    - name: Ensure Apache logo in web root
+      ansible.builtin.copy:
+        src: logo-rh-ansible-automation.png
+        dest: /var/www/html/logo-rh-ansible-automation.png
+
+    - name: deploy index.html
+      ansible.builtin.template:
+        src: index.html.j2
+        dest: /var/www/html/index.html
+      notify: apache-restart
+
+    - name: Apache enabled and running
+      ansible.builtin.service:
+        name: httpd
+        enabled: true
+        state: started
+
+    - name: Test page link
+      ansible.builtin.uri:
+        url: "{{ http_url }}"
+        return_content: false
+        status_code: 200
+      register: result
+
+    - name: Display result
+      ansible.builtin.debug:
+        msg: "O retorno do link foi {{ result.status }}"
+
+    - name: Fail if return code is not 200
+      ansible.builtin.fail:
+        msg: "HTTP return code is not 200"
+      when: result.status != 200
+
+    - name: Access page
+      ansible.builtin.debug:
+        msg: "{{ http_url }}"
+
+  handlers:
+    - name: apache-restart
+      ansible.builtin.service:
+        name: httpd
+        state: restarted

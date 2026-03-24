@@ -1,0 +1,58 @@
+---
+- name: Atualizar DNS - CRIAR registro A e PTR
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    host_ip: 192.168.100.51
+    host_name: web01.aroque.com.br
+
+    dns_server: "192.168.100.11"
+    dns_zone: "aroque.com.br"
+    dns_reverse_zone: "100.168.192.in-addr.arpa"
+    dns_key_name: "ansible-key"
+    dns_key_secret: ""
+    dns_key_algorithm: "hmac-sha256"
+
+  collections:
+    - community.general
+
+  tasks:
+    - name: Criar registro A no DNS
+      community.general.nsupdate:
+        server: "{{ dns_server }}"
+        zone: "{{ dns_zone }}"
+        record: "{{ host_name.split('.')[0] }}"
+        type: A
+        value: "{{ host_ip }}"
+        ttl: 300
+        key_name: "{{ dns_key_name }}"
+        key_secret: "{{ dns_key_secret }}"
+        key_algorithm: "{{ dns_key_algorithm }}"
+
+    - name: Criar registro PTR no DNS reverso
+      community.general.nsupdate:
+        server: "{{ dns_server }}"
+        zone: "{{ dns_reverse_zone }}"
+        record: "{{ host_ip.split('.')[-1] }}.{{ dns_reverse_zone }}"
+        type: PTR
+        value:  "{{ host_name }}."
+        ttl: 300
+        key_name: "{{ dns_key_name }}"
+        key_secret: "{{ dns_key_secret }}"
+        key_algorithm: "{{ dns_key_algorithm }}"
+
+    - name: Debug variable host_ip
+      ansible.builtin.debug:
+        var: host_ip
+
+    - name: Debug variable host_name
+      ansible.builtin.debug:
+        var: host_name
+
+    - name: Export host_ip to another job template
+      ansible.builtin.set_stats:
+        data:
+          host_ip: "{{ host_ip }}"
+          host_name: "{{ host_name }}"
+          hostname: "{{ host_name }}"

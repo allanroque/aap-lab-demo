@@ -1,0 +1,17 @@
+---
+- name: Debug simples com wait parametrizado
+  hosts: all
+  gather_facts: false
+
+  vars:
+    mensagem: "Executando playbook de teste com sucesso"
+    tempo_espera: 5
+
+  tasks:
+    - name: Exibir mensagem
+      ansible.builtin.debug:
+        msg: "{{ mensagem }}"
+
+    - name: Aguardar tempo definido
+      ansible.builtin.pause:
+        seconds: "{{ tempo_espera }}"

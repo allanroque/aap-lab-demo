@@ -1,0 +1,71 @@
+---
+- name: High CPU Remediation
+  hosts: target
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Get top 5 CPU-consuming processes
+      ansible.builtin.shell: ps aux --sort=-%cpu | head -6 | tail -5
+      register: top_cpu_processes
+      changed_when: false
+
+    - name: Display top CPU processes
+      ansible.builtin.debug:
+        msg: "Top 5 CPU-consuming processes:\n{{ top_cpu_processes.stdout }}"
+
+    - name: Get current CPU usage
+      ansible.builtin.shell: top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
+      register: cpu_usage_before
+      changed_when: false
+
+    - name: Display current CPU usage
+      ansible.builtin.debug:
+        msg: "Current CPU usage: {{ cpu_usage_before.stdout }}%"
+
+    - name: Kill stress processes
+      ansible.builtin.shell: pkill -f stress || true
+      changed_when: true
+      register: stress_killed
+
+    - name: Display stress process termination
+      ansible.builtin.debug:
+        msg: "Stress processes killed"
+
+    - name: Check for zombie processes
+      ansible.builtin.shell: ps aux | grep -E '<defunct>' | grep -v grep | wc -l
+      register: zombie_count
+      changed_when: false
+
+    - name: Clean zombie processes if any
+      ansible.builtin.shell: |
+        for pid in $(ps aux | grep -E '<defunct>' | grep -v grep | awk '{print $2}'); do
+          kill -9 $pid 2>/dev/null || true
+        done
+        echo "Zombie cleanup completed"
+      when: zombie_count.stdout | int > 0
+      changed_when: true
+      register: zombie_cleanup
+
+    - name: Wait for process cleanup
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Get CPU usage after cleanup
+      ansible.builtin.shell: top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1
+      register: cpu_usage_after
+      changed_when: false
+
+    - name: Display CPU usage after cleanup
+      ansible.builtin.debug:
+        msg: "CPU usage after cleanup: {{ cpu_usage_after.stdout }}%"
+
+    - name: High CPU remediation report
+      ansible.builtin.debug:
+        msg:
+          - "=== HIGH CPU REMEDIATION REPORT ==="
+          - "CPU usage before: {{ cpu_usage_before.stdout }}%"
+          - "CPU usage after: {{ cpu_usage_after.stdout }}%"
+          - "Stress processes killed: {{ stress_killed.changed }}"
+          - "Zombie processes found: {{ zombie_count.stdout }}"
+          - "Zombie cleanup: {{ zombie_cleanup.changed | default(false) }}"

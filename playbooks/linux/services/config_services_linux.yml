@@ -1,0 +1,41 @@
+---
+- name: Manage Allowed and Disallowed Services
+  hosts: all
+  become: true
+  vars:
+    services_to_start:
+      - sshd
+      - rhsm
+      - firewalld
+      - chronyd
+      - cockpit.socket
+      - auditd
+    services_to_stop:
+      - telnetd
+      - ftpd
+      - cups
+      - bluetooth
+      - avahi-daemon
+      - cups
+      - postfix
+
+  tasks:
+    - name: Start allowed services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      loop: "{{ services_to_start }}"
+      ignore_errors: yes
+      tags:
+        - service_management
+
+    - name: Stop disallowed services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: no
+      loop: "{{ services_to_stop }}"
+      ignore_errors: yes
+      tags:
+        - service_management

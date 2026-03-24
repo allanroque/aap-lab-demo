@@ -1,0 +1,79 @@
+---
+# =============================================================================
+# AIOps Lab - Variáveis de Provisionamento AWS
+# =============================================================================
+# Variáveis sobrescritas via extra_vars no AAP Job Template.
+#
+# Ao chamar a automação, defina:
+#   - servers[].name          → Nome do servidor (vira tag Name)
+#   - servers[].group         → Tag Group (aplicação/cluster, ex: webservers)
+#   - servers[].role          → Tag Role (função, ex: webserver)
+#   - servers[].instance_type → Modelo EC2 (opcional, default usa o global)
+#   - servers[].extra_tags    → Tags adicionais livres (dict)
+# =============================================================================
+
+# --- Projeto ---
+project_name: "aiops-lab"
+environment: "lab"          # lab | dev | staging | prod
+
+# --- AWS ---
+aws_region: "us-east-1"
+instance_type: "t3.medium"   # Modelo padrão (cada servidor pode sobrescrever)
+
+# --- Credenciais AWS (via AAP Credential ou extra_vars) ---
+# aws_access_key_id: ""
+# aws_secret_access_key: ""
+
+# --- SSH ---
+ssh_public_key_file: "~/.ssh/id_ed25519.pub"
+ansible_ssh_private_key_file: "~/.ssh/id_ed25519"
+ansible_user: "ec2-user"
+
+# --- Terraform ---
+terraform_project_dir: "/tmp/terraform/{{ project_name }}"
+terraform_binary: "/usr/bin/terraform"
+terraform_backend: false
+# terraform_state_bucket: "my-terraform-state-bucket"
+
+# --- Servidores a provisionar ---
+# Cada entrada define um servidor. Os campos name, group e role viram tags AWS.
+# O inventário dinâmico do AAP usa essas tags para montar grupos automaticamente.
+#
+# Campos:
+#   name          (obrigatório) - Nome do servidor → Tag:Name
+#   role          (obrigatório) - Função → Tag:Role (ex: webserver, appserver, database)
+#   group         (obrigatório) - Grupo/aplicação → Tag:Group (ex: webservers, app_tier)
+#   instance_type (opcional)    - Modelo EC2 deste servidor (default: global instance_type)
+#   disk_size     (opcional)    - Tamanho do disco em GB (default: 30)
+#   extra_tags    (opcional)    - Tags adicionais livres (dict)
+servers:
+  - name: "webserver-01"
+    role: "webserver"
+    group: "webservers"
+    instance_type: "t3.medium"
+    disk_size: 30
+    extra_tags:
+      Service: "apache"
+      Monitoring: "enabled"
+
+  - name: "webserver-02"
+    role: "webserver"
+    group: "webservers"
+    instance_type: "t3.medium"
+    disk_size: 30
+    extra_tags:
+      Service: "apache"
+      Monitoring: "enabled"
+
+# --- Configuração pós-provisionamento ---
+configure_apache: true
+configure_node_exporter: true
+configure_promtail: true
+
+# --- AAP Integration ---
+aap_url: "https://192.168.100.11"
+aap_organization: "SRE"
+
+# --- Monitoring ---
+prometheus_server: "192.168.100.1"
+loki_server: "192.168.100.1:3100"

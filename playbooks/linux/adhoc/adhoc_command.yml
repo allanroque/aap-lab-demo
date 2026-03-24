@@ -1,0 +1,18 @@
+---
+- name: Execute a command from a variable
+  hosts: all
+  gather_facts: false
+
+  vars:
+    # Define the command you want to execute here
+    my_command: "echo Test Ansible Command!"
+
+  tasks:
+    - name: Execute command using the shell module
+      ansible.builtin.shell: "{{ my_command }}"
+      register: shell_output
+      ignore_errors: true
+
+    - name: Show output from shell module
+      ansible.builtin.debug:
+        msg: "Output of shell: {{ shell_output.stdout }}"

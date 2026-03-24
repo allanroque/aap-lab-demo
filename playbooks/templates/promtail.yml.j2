@@ -1,0 +1,67 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /var/lib/promtail/positions.yaml
+
+clients:
+  - url: "{{ loki_server_url }}"
+
+scrape_configs:
+
+  # Sempre coletar logs de sistema
+  - job_name: system
+    static_configs:
+      - targets:
+          - "{{ ansible_hostname }}"
+        labels:
+          job: system
+          host: "{{ inventory_hostname }}"
+          __path__: /var/log/{messages,secure,dmesg,boot.log}
+          __path_exclude__: /var/log/vmware-*,/var/log/kdump.log
+# Necessario alterar permissao dos arquivos /var/log/*.log
+
+  # Sempre coletar logs do journald (systemd)
+  - job_name: journal
+    journal:
+      max_age: 12h
+      path: /var/log/journal
+      labels:
+        job: journald
+        host: "{{ inventory_hostname }}"
+    relabel_configs:
+      - source_labels: ['__journal__systemd_unit']
+        target_label: 'unit'
+      - source_labels: ['__journal__hostname']
+        target_label: 'host'
+
+{% if 'APACHE' in group_names %}
+  # Logs de Apache
+  - job_name: apache
+    static_configs:
+      - targets:
+          - "{{ ansible_hostname }}"
+        labels:
+          job: apache
+          host: "{{ inventory_hostname }}"
+          __path__: /var/log/httpd/*
+{% endif %}
+
+{% if 'AAP' in group_names %}
+  # Logs de Automation Controller / AAP
+  - job_name: aap
+    static_configs:
+      - targets:
+          - "{{ ansible_hostname }}"
+        labels:
+          job: aap
+          host: "{{ inventory_hostname }}"
+          __path__:
+            - /var/log/tower/*.log
+            - /var/log/supervisor/*.log
+            - /var/log/nginx/*.log
+            - /var/lib/pgsql/data/pg_log/*.log
+            - /var/log/redis/*.log
+{% endif %}
+

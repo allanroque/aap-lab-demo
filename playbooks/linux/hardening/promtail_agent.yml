@@ -1,0 +1,41 @@
+---
+- name: Install and configure Promtail on Linux nodes
+  hosts: INFRA
+  become: yes
+
+  tasks:
+
+    - name: Create Grafana repo file
+      copy:
+        src: files/grafana.repo
+        dest: /etc/yum.repos.d/grafana.repo
+
+    - name: Install unzip package
+      ansible.builtin.dnf:
+        name: promtail
+        state: present
+      when: ansible_os_family == 'RedHat'
+
+    - name: Set ACL permissions for Promtail on log directory
+      command: setfacl -R -m u:promtail:rX /var/log
+
+    - name: Add promtail user to adm group
+      user:
+        name: promtail
+        groups: adm
+        append: yes
+
+    - name: Create Promtail configuration file
+      copy:
+        src: files/promtail-config.yaml
+        dest: /etc/promtail/config.yml
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Promtail service
+      systemd:
+        name: promtail
+        enabled: yes
+        state: started

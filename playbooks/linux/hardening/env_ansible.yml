@@ -1,0 +1,33 @@
+---
+- name: Coleta de variáveis e configuração do Ansible em execução
+  hosts: localhost
+  gather_facts: no
+  connection: local
+  tasks:
+
+    - name: Mostrar variáveis de ambiente do container
+      ansible.builtin.shell: env | sort
+      register: env_output
+
+    - name: Exibir variáveis de ambiente
+      debug:
+        var: env_output.stdout_lines
+
+    - name: Mostrar config ativa do ansible (apenas alteradas)
+      ansible.builtin.command: ansible-config dump --only-changed
+      register: cfg
+
+    - name: Exibir config alterada do Ansible
+      debug:
+        var: cfg.stdout_lines
+
+    - name: Mostrar config completa do Ansible (opcional)
+      ansible.builtin.command: ansible-config dump
+      register: cfg_full
+      changed_when: false
+
+    - name: Exibir config completa (somente se quiser ver tudo)
+      debug:
+        var: cfg_full.stdout_lines
+      when: cfg_full is defined
+

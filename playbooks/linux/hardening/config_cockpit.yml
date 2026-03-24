@@ -1,0 +1,34 @@
+---
+- name: Configure Cockpit on RHEL Systems
+  hosts: all
+  become: true
+  tasks:
+#    - name: Install Cockpit
+#      ansible.builtin.dnf:
+#        name: cockpit
+#        state: present
+#      when: inventory_hostname != 'ipamonit.aroque.com.br'
+
+    - name: Enable and start Cockpit socket
+      systemd:
+        name: cockpit.socket
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      when: inventory_hostname != 'ipamonit.aroque.com.br'
+
+    - name: Open firewall for Cockpit
+      firewalld:
+        service: cockpit
+        permanent: true
+        state: enabled
+        immediate: true
+      when: inventory_hostname != 'ipamonit.aroque.com.br'
+
+    - name: Ensure cockpit service is running
+      systemd:
+        name: cockpit
+        state: started
+        enabled: yes
+      ignore_errors: yes
+      when: inventory_hostname != 'ipamonit.aroque.com.br'

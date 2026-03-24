@@ -1,0 +1,111 @@
+---
+- name: Host Health Investigation
+  hosts: target
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Get system uptime
+      ansible.builtin.shell: uptime
+      register: system_uptime
+      changed_when: false
+
+    - name: Get disk usage
+      ansible.builtin.shell: >
+        df -h / | tail -1
+      register: disk_usage
+      changed_when: false
+
+    - name: Get memory usage
+      ansible.builtin.shell: >
+        free -h | grep Mem
+      register: memory_usage
+      changed_when: false
+
+    - name: Get top CPU processes
+      ansible.builtin.shell: ps aux --sort=-%cpu | head -6 | tail -5
+      register: top_cpu_procs
+      changed_when: false
+
+    - name: Get top memory processes
+      ansible.builtin.shell: ps aux --sort=-%mem | head -6 | tail -5
+      register: top_mem_procs
+      changed_when: false
+
+    - name: Check failed systemd services
+      ansible.builtin.shell: systemctl list-units --failed --no-pager --output=short
+      register: failed_services
+      changed_when: false
+
+    - name: Get recent system errors
+      ansible.builtin.shell: journalctl -p err -n 10 --no-pager 2>/dev/null || echo "No recent errors"
+      register: recent_errors
+      changed_when: false
+
+    - name: Check network connectivity
+      ansible.builtin.shell: |
+        echo "=== Network Interfaces ==="
+        ip addr show | grep -E '^\d+:|inet ' || echo "No IP addresses"
+        echo ""
+        echo "=== Routing Table ==="
+        ip route show | head -5 || echo "No routes"
+      register: network_status
+      changed_when: false
+
+    - name: Check SELinux status
+      ansible.builtin.shell: getenforce 2>/dev/null || echo "SELinux not available"
+      register: selinux_status
+      changed_when: false
+
+    - name: Check firewall status
+      ansible.builtin.shell: systemctl is-active firewalld 2>/dev/null || systemctl is-active iptables 2>/dev/null || echo "No firewall service running"
+      register: firewall_status
+      changed_when: false
+
+    - name: Check httpd service if present
+      ansible.builtin.shell: systemctl is-active httpd 2>/dev/null || echo "httpd not running"
+      register: httpd_status
+      changed_when: false
+
+    - name: Compile full health report
+      ansible.builtin.debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════════════╗"
+          - "║                    HOST HEALTH INVESTIGATION REPORT                ║"
+          - "╠════════════════════════════════════════════════════════════════════╣"
+          - "│ SYSTEM INFORMATION:"
+          - "│ Hostname: {{ ansible_hostname }}"
+          - "│ OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "│ Kernel: {{ ansible_kernel }}"
+          - "│ {{ system_uptime.stdout }}"
+          - "│"
+          - "│ DISK STATUS:"
+          - "│ {{ disk_usage.stdout }}"
+          - "│"
+          - "│ MEMORY STATUS:"
+          - "│ {{ memory_usage.stdout }}"
+          - "│"
+          - "│ TOP CPU-CONSUMING PROCESSES:"
+          - "{{ top_cpu_procs.stdout_lines | map('regex_replace', '^', '│ ') | list }}"
+          - "│"
+          - "│ TOP MEMORY-CONSUMING PROCESSES:"
+          - "{{ top_mem_procs.stdout_lines | map('regex_replace', '^', '│ ') | list }}"
+          - "│"
+          - "│ FAILED SERVICES:"
+          - "{{ (failed_services.stdout_lines | default(['│ None'])) | map('regex_replace', '^', '│ ') | list }}"
+          - "│"
+          - "│ RECENT SYSTEM ERRORS:"
+          - "{{ (recent_errors.stdout_lines | default(['│ None'])) | map('regex_replace', '^', '│ ') | list }}"
+          - "│"
+          - "│ NETWORK STATUS:"
+          - "{{ network_status.stdout_lines | map('regex_replace', '^', '│ ') | list }}"
+          - "│"
+          - "│ SELINUX STATUS:"
+          - "│ {{ selinux_status.stdout }}"
+          - "│"
+          - "│ FIREWALL STATUS:"
+          - "│ {{ firewall_status.stdout }}"
+          - "│"
+          - "│ HTTPD STATUS:"
+          - "│ {{ httpd_status.stdout }}"
+          - "╚════════════════════════════════════════════════════════════════════╝"

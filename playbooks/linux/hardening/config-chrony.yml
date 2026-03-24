@@ -1,0 +1,37 @@
+---
+- name: Configuração do chrony
+  hosts: all
+  become: yes
+  gather_facts: yes
+  tasks:
+
+    - name: Instalação do pacote chrony
+      dnf:
+        name: chrony
+        state: present
+
+    - name: Copiar o arquivo de configuração do chrony para o node
+      copy:
+        src: files/chrony.conf 
+        dest: /etc/chrony.conf
+        mode: 0644
+        owner: root
+        group: root
+
+    - name: Start do serviço do chrony
+      service:
+        name: chronyd
+        state: started
+        enabled: yes
+
+    - name: Validar o horário do servidor
+      command: chronyc tracking
+      register: cmd_result
+      changed_when: false
+      ignore_errors: true
+      check_mode: no
+
+    - name: Exibir o resultado do comando
+      debug:
+        var: cmd_result.stdout_lines
+        

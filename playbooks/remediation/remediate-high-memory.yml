@@ -1,0 +1,65 @@
+---
+- name: High Memory Remediation
+  hosts: target
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Get current memory usage
+      ansible.builtin.shell: >
+        free -h | grep Mem
+      register: memory_usage_before
+      changed_when: false
+
+    - name: Display current memory usage
+      ansible.builtin.debug:
+        msg: "Memory before cleanup:\n{{ memory_usage_before.stdout }}"
+
+    - name: Clear page cache
+      ansible.builtin.shell: |
+        sync
+        echo 3 > /proc/sys/vm/drop_caches
+        echo "Page cache cleared"
+      changed_when: true
+      register: cache_cleared
+
+    - name: Kill stress --vm processes
+      ansible.builtin.shell: pkill -f 'stress --vm' || pkill -f 'stress -m' || true
+      changed_when: true
+      register: vm_stress_killed
+
+    - name: Display stress process termination
+      ansible.builtin.debug:
+        msg: "Memory stress processes killed"
+
+    - name: Check for memory-hogging processes
+      ansible.builtin.shell: ps aux --sort=-%mem | head -6 | tail -5
+      register: memory_hogs
+      changed_when: false
+
+    - name: Display memory-hogging processes
+      ansible.builtin.debug:
+        msg: "Top 5 memory-consuming processes:\n{{ memory_hogs.stdout }}"
+
+    - name: Wait for process cleanup
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Get memory usage after cleanup
+      ansible.builtin.shell: >
+        free -h | grep Mem
+      register: memory_usage_after
+      changed_when: false
+
+    - name: Display memory usage after cleanup
+      ansible.builtin.debug:
+        msg: "Memory after cleanup:\n{{ memory_usage_after.stdout }}"
+
+    - name: High memory remediation report
+      ansible.builtin.debug:
+        msg:
+          - "=== HIGH MEMORY REMEDIATION REPORT ==="
+          - "{{ memory_usage_before.stdout }}"
+          - "{{ memory_usage_after.stdout }}"
+          - "Cache cleared: {{ cache_cleared.changed }}"
+          - "Memory stress processes killed: {{ vm_stress_killed.changed }}"

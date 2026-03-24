@@ -1,0 +1,43 @@
+---
+- name: SELinux Remediation
+  hosts: target
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Check current SELinux status
+      ansible.builtin.shell: getenforce
+      register: selinux_status_before
+      changed_when: false
+
+    - name: Display current SELinux status
+      ansible.builtin.debug:
+        msg: "Current SELinux status: {{ selinux_status_before.stdout }}"
+
+    - name: Set SELinux to enforcing
+      ansible.builtin.shell: setenforce 1
+      changed_when: true
+      register: setenforce_result
+      ignore_errors: true
+
+    - name: Handle setenforce failures
+      ansible.builtin.debug:
+        msg: "Warning: setenforce may have failed (SELinux might be disabled)"
+      when: setenforce_result.rc != 0
+
+    - name: Verify SELinux is enforcing
+      ansible.builtin.shell: getenforce
+      register: selinux_status_after
+      changed_when: false
+
+    - name: Display SELinux status after change
+      ansible.builtin.debug:
+        msg: "SELinux status after change: {{ selinux_status_after.stdout }}"
+
+    - name: SELinux remediation report
+      ansible.builtin.debug:
+        msg:
+          - "=== SELINUX REMEDIATION REPORT ==="
+          - "Status before: {{ selinux_status_before.stdout }}"
+          - "Status after: {{ selinux_status_after.stdout }}"
+          - "Remediation applied: {{ selinux_status_after.stdout == 'Enforcing' }}"

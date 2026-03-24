@@ -1,0 +1,50 @@
+{% for server in servers %}
+output "{{ server.name | replace('-', '_') | replace('.', '_') }}_public_ip" {
+  description = "Public IP of {{ server.name }}"
+  value       = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.public_ip
+}
+
+output "{{ server.name | replace('-', '_') | replace('.', '_') }}_private_ip" {
+  description = "Private IP of {{ server.name }}"
+  value       = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.private_ip
+}
+
+output "{{ server.name | replace('-', '_') | replace('.', '_') }}_instance_id" {
+  description = "Instance ID of {{ server.name }}"
+  value       = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.id
+}
+{% endfor %}
+
+output "all_public_ips" {
+  description = "All instance public IPs"
+  value = [
+{% for server in servers %}
+    aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.public_ip{{ ',' if not loop.last else '' }}
+{% endfor %}
+  ]
+}
+
+output "all_instance_ids" {
+  description = "All instance IDs"
+  value = [
+{% for server in servers %}
+    aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.id{{ ',' if not loop.last else '' }}
+{% endfor %}
+  ]
+}
+
+output "all_server_info" {
+  description = "Complete server info map"
+  value = {
+{% for server in servers %}
+    "{{ server.name }}" = {
+      public_ip     = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.public_ip
+      private_ip    = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.private_ip
+      instance_id   = aws_instance.{{ server.name | replace('-', '_') | replace('.', '_') }}.id
+      role          = "{{ server.role | default('managed') }}"
+      group         = "{{ server.group | default('managed_servers') }}"
+      instance_type = "{{ server.instance_type | default(instance_type) }}"
+    }{{ ',' if not loop.last else '' }}
+{% endfor %}
+  }
+}

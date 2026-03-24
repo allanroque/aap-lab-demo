@@ -1,0 +1,73 @@
+---
+- name: ChatOps Notification
+  hosts: localhost
+  gather_facts: false
+  vars:
+    webhook_url: ""
+    channel: ""
+    message: ""
+    severity: "info"
+    alertname: ""
+    instance: ""
+
+    # Severity emojis
+    severity_emoji:
+      critical: "🔴"
+      warning: "🟠"
+      info: "🔵"
+      resolved: "🟢"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.fail:
+        msg: "webhook_url and message are required"
+      when: webhook_url | length == 0 or message | length == 0
+
+    - name: Prepare Slack notification payload
+      ansible.builtin.set_fact:
+        notification_payload:
+          text: "[{{ severity_emoji[severity] | default('ℹ️') }}] {{ alertname | default('Alert') }} - {{ severity | upper }}"
+          attachments:
+            - color: "{{ 'danger' if severity == 'critical' else 'warning' if severity == 'warning' else 'good' }}"
+              title: "{{ alertname | default('Alert') }}"
+              text: "{{ message }}"
+              fields:
+                - title: "Severity"
+                  value: "{{ severity | upper }}"
+                  short: true
+                - title: "Instance"
+                  value: "{{ instance | default('N/A') }}"
+                  short: true
+                - title: "Channel"
+                  value: "{{ channel | default('default') }}"
+                  short: true
+                - title: "Timestamp"
+                  value: "{{ ansible_date_time.iso8601 }}"
+                  short: true
+
+    - name: Send Slack notification
+      ansible.builtin.uri:
+        url: "{{ webhook_url }}"
+        method: POST
+        body_format: json
+        body: "{{ notification_payload }}"
+        status_code: 200
+      register: webhook_response
+      changed_when: true
+      ignore_errors: true
+
+    - name: Display notification result
+      ansible.builtin.debug:
+        msg:
+          - "=== CHATOPS NOTIFICATION REPORT ==="
+          - "Webhook URL: {{ webhook_url | regex_replace('(https://[^/]+/).*', '\\1***') }}"
+          - "Severity: {{ severity }}"
+          - "Alert: {{ alertname }}"
+          - "Instance: {{ instance }}"
+          - "Status: {{ 'Success' if webhook_response.rc == 0 else 'Failed' }}"
+          - "Response code: {{ webhook_response.status | default('N/A') }}"
+
+    - name: Handle notification failure
+      ansible.builtin.debug:
+        msg: "Warning: Webhook delivery may have failed"
+      when: webhook_response.rc != 0
