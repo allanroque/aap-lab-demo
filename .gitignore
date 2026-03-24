@@ -3,6 +3,8 @@
 .env
 *.secret
 **/.aap-credentials
+playbooks/ansible-navigator.log
+ansible-navigator.log
 
 # Logs
 *.log
@@ -18,3 +20,4 @@ volumes/
 .DS_Store
 .claude
 .claude/worktrees/
+.claude/
